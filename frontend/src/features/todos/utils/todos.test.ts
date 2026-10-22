@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { selectTodos } from './todos'
 import type { Todo } from '../types'
 
@@ -22,6 +22,25 @@ describe('selectTodos', () => {
       { ...base, id: 3 },
     ]
     expect(selectTodos(todos, 'active', ' api ', 'newest')).toEqual([matching])
+  })
+
+  it('filters overdue tasks due before today, excluding completed and non-overdue tasks', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-15T12:00:00.000Z'))
+    try {
+      const overdue = { ...base, id: 1, due_date: '2026-10-14' }
+      const todos = [
+        overdue,
+        { ...base, id: 2, completed: true, due_date: '2026-10-14' },
+        { ...base, id: 3, due_date: '2026-10-15' },
+        { ...base, id: 4, due_date: '2026-10-16' },
+        { ...base, id: 5, due_date: null },
+      ]
+
+      expect(selectTodos(todos, 'overdue', '', 'newest')).toEqual([overdue])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('sorts by priority without changing the source array', () => {
