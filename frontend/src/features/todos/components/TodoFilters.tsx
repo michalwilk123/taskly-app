@@ -34,6 +34,7 @@ export function TodoFilters({
           { value: 'all', label: 'All statuses' },
           { value: 'active', label: 'To do' },
           { value: 'completed', label: 'Completed' },
+          { value: 'overdue', label: 'Overdue' },
         ]}
       />
       <Select
