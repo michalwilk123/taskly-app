@@ -4,7 +4,7 @@
 
 | Demo PR | Agent comments and results |
 | --- | --- |
-| **[PR #3 — Backend: sufficient tests](https://github.com/michalwilk123/taskly-app/pull/3)** | **[Read the 5/5 review](https://github.com/michalwilk123/taskly-app/pull/3#issuecomment-6351685952)** · [No additional tests needed](https://github.com/michalwilk123/taskly-app/pull/3#issuecomment-6352087517) |
+| **[PR #3 — Backend: sufficient tests](https://github.com/michalwilk123/taskly-app/pull/3)** | **[Read the test review](https://github.com/michalwilk123/taskly-app/pull/3#issuecomment-6351685952)** · [No additional tests needed](https://github.com/michalwilk123/taskly-app/pull/3#issuecomment-6352087517) |
 | **[PR #4 — Frontend: missing tests](https://github.com/michalwilk123/taskly-app/pull/4)** | **[Read the gap assessment](https://github.com/michalwilk123/taskly-app/pull/4#issuecomment-6351715875)** · **[Generated tests and verification results](https://github.com/michalwilk123/taskly-app/pull/4#issuecomment-6351765422)** |
 
 PR #4 intentionally retains the failing generated test that exposes an overdue-filter bug. The agent commits tests without changing production code.
