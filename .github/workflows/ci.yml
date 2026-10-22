@@ -27,6 +27,27 @@ jobs:
     with:
       sha: ${{ inputs.sha || github.event.pull_request.head.sha || github.sha }}
 
+  report:
+    needs: checks
+    if: always() && !cancelled() && github.event_name == 'workflow_dispatch' && inputs.pr_number != ''
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+    steps:
+      # Dispatched workflow checks attach to main; publish the result on the PR SHA.
+      - name: Report verification on the tested PR commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ inputs.sha }}
+          RESULT: ${{ needs.checks.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" \
+            -f name='PR verification' -f head_sha="$TARGET_SHA" \
+            -f status=completed -f conclusion="$RESULT" -f details_url="$RUN_URL" \
+            -f 'output[title]'="Tests and static checks: $RESULT" \
+            -f 'output[summary]'="Verification of commit $TARGET_SHA. Logs: $RUN_URL"
+
   review:
     needs: checks
     if: >-
