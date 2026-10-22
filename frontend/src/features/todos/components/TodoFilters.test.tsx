@@ -17,14 +17,16 @@ it('displays controlled values and forwards all filter changes', async () => {
   )
   await user.type(screen.getByLabelText('Search tasks'), 'a')
   await user.selectOptions(screen.getByLabelText('Status'), 'completed')
+  await user.selectOptions(screen.getByLabelText('Status'), 'overdue')
   await user.selectOptions(screen.getByLabelText('Sort by'), 'due')
   expect(callbacks.onSearchChange).toHaveBeenCalledWith('a')
   expect(callbacks.onFilterChange).toHaveBeenCalledWith('completed')
+  expect(callbacks.onFilterChange).toHaveBeenCalledWith('overdue')
   expect(callbacks.onSortChange).toHaveBeenCalledWith('due')
   rerender(
-    <TodoFilters filter="completed" search="demo" sort="due" {...callbacks} />,
+    <TodoFilters filter="overdue" search="demo" sort="due" {...callbacks} />,
   )
   expect(screen.getByLabelText('Search tasks')).toHaveValue('demo')
-  expect(screen.getByLabelText('Status')).toHaveValue('completed')
+  expect(screen.getByLabelText('Status')).toHaveValue('overdue')
   expect(screen.getByLabelText('Sort by')).toHaveValue('due')
 })
