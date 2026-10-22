@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number when dispatched after an agent commit
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+    with:
+      sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  review:
+    needs: checks
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' && inputs.pr_number != '')
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: write
+      actions: write
+    uses: ./.github/workflows/agent-worker.yml
+    with:
+      pr_number: ${{ format('{0}', github.event.pull_request.number || inputs.pr_number) }}
+      sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      mode: review
+    secrets:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

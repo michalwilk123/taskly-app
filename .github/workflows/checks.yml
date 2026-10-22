@@ -1,0 +1,68 @@
+name: Test and static checks
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        required: true
+        type: string
+      proposal:
+        default: false
+        type: boolean
+    outputs:
+      result:
+        value: ${{ jobs.checks.outputs.result }}
+      applied:
+        value: ${{ jobs.checks.outputs.applied }}
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.tests.outcome }}
+      applied: ${{ steps.apply.outcome }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.sha }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.13.0'
+      - name: Install test dependencies
+        run: |
+          python -m pip install -r source/backend/requirements.txt ruff==0.14.2
+          npm ci --prefix source/frontend --no-audit --no-fund
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: inputs.proposal
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: inputs.proposal
+        with:
+          name: test-proposal
+          path: proposal
+      - name: Apply generated tests
+        id: apply
+        if: inputs.proposal
+        run: python automation/scripts/test_agent.py apply --source source --work proposal
+      - name: Run tests and static checks
+        id: tests
+        shell: bash
+        run: |
+          status=0
+          (cd source/backend && python -m pytest) || status=1
+          (cd source/frontend && npm test && npm run typecheck && npm run format:check) || status=1
+          (cd source && python -m unittest discover -s scripts/tests) || status=1
+          ruff check source/backend source/scripts --select E9,F63,F7,F82 || status=1
+          exit "$status"

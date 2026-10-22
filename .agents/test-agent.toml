@@ -1,0 +1,35 @@
+model = "openai/gpt-6-luna"
+reasoning = "high"
+timeout_seconds = 240
+max_diff_chars = 120000
+instructions = ".agents/test-agent.md"
+test_paths = ["backend/tests/**/test_*.py", "backend/tests/test_*.py", "frontend/src/*.test.ts", "frontend/src/*.test.tsx", "frontend/src/**/*.test.ts", "frontend/src/**/*.test.tsx", "scripts/tests/test_*.py"]
+
+# Conditions within a rule are AND; alternatives within a condition are OR.
+# `paths` matches changed paths, `added_paths` only new files, and
+# `added_lines` searches added source lines (never deleted lines).
+[[rules]]
+name = "backend"
+paths = ["backend/app/**", "backend/tests/**"]
+skills = [".agents/skills/backend-tests/SKILL.md"]
+
+[[rules]]
+name = "frontend"
+paths = ["frontend/src/**"]
+skills = [".agents/skills/frontend-tests/SKILL.md"]
+
+[[rules]]
+name = "new-module"
+added_paths = ["backend/app/features/**", "frontend/src/features/**"]
+skills = [".agents/skills/new-module/SKILL.md"]
+
+[[rules]]
+name = "api-contract"
+paths = ["backend/app/**"]
+added_lines = ['@router\.(get|post|patch|put|delete)\(']
+skills = [".agents/skills/api-contract/SKILL.md"]
+
+[[rules]]
+name = "agent"
+paths = ["scripts/**"]
+skills = [".agents/skills/agent-tests/SKILL.md"]
