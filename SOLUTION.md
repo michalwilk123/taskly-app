@@ -21,6 +21,8 @@ GitHub-hosted Ubuntu runners supply Docker. No Copilot subscription is needed.
    A trusted publisher commits the tests **even when checks fail**, reports the
    result and explicitly dispatches CI for the new commit. The author investigates
    failures; the agent never changes production code or repairs tests to green.
+   Dispatched CI publishes a separate **PR verification** check on the tested PR
+   SHA, because GitHub attaches its automatic workflow checks to the dispatch ref.
 
 Human pushes cancel previous work for that PR. Every publication checks the head
 SHA again, and pushes are never forced. Unrelated/unauthorized comments cannot
@@ -91,7 +93,7 @@ was checked with the exact pinned container and model.
   existing filter component test. Vitest reported 18 passing tests and one
   assertion failure: completed tasks incorrectly appear in the overdue filter.
   The failed test was committed, with no production-code edits. Generation cost
-  reported by Pi: $0.00326. [Explicitly dispatched CI](https://github.com/michalwilk123/taskly-app/actions/runs/39846273550)
+  reported by Pi: $0.00326. [Explicitly dispatched CI](https://github.com/michalwilk123/taskly-app/actions/runs/39846728475)
   ran against that bot commit and reproduced the failure.
 - [Cancellation run](https://github.com/michalwilk123/taskly-app/actions/runs/39845313671):
   a human push during generation canceled the obsolete command run; CI started
