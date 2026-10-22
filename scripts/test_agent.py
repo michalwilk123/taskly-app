@@ -20,6 +20,7 @@ import traceback
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = tomllib.loads((ROOT / ".agents/test-agent.toml").read_text())
 MARKER = "<!-- taskly-test-agent -->"
+BOT_NAME = "🤖 TestScout"
 REPO = os.environ.get("GITHUB_REPOSITORY", "michalwilk123/taskly-app")
 
 
@@ -126,7 +127,7 @@ def prepare(work):
                 f"issues/{number}/comments",
                 "POST",
                 {
-                    "body": "Unit test agent: **5/5 — no missing tests.** No commit needed."
+                    "body": f"## {BOT_NAME}\n\n**⭐⭐⭐⭐⭐ · 5/5 — ✅ No missing tests**\n\nNo commit needed."
                 },
             )
             output(mode="skip", number=number, head_sha=state["head_sha"])
@@ -373,21 +374,45 @@ def safe(value):
     return html.escape(str(value)).replace("@", "&#64;").replace("\n", " ")
 
 
+def review_comment(result):
+    review = {**result["review"], "head_sha": result["head_sha"]}
+    data = json.dumps(review).replace("<", "\\u003c")
+    stars = "⭐" * review["score"] + "☆" * (5 - review["score"])
+    status = "⚠️ Missing tests" if review["gaps"] else "✅ No missing tests"
+    body = f"{MARKER}\n<!-- review-data:{data} -->\n## {BOT_NAME}\n\n"
+    body += (
+        f"**{stars} · {review['score']}/5 — {status}**\n\n{safe(review['summary'])}\n"
+    )
+    if review["gaps"]:
+        body += "\n### 🧪 Tests to add\n"
+    for gap in review["gaps"]:
+        body += f"\n- `{safe(gap['path'])}`\n\n  {safe(gap['scenario'])}\n\n  **Why:** {safe(gap['reason'])}\n"
+    if review["gaps"]:
+        body += "\n### 💬 Next step\n\nA maintainer can comment **`generate tests`** to add these tests.\n"
+    body += "\n<details>\n<summary>🔎 Review context</summary>\n\n"
+    body += f"Commit: `{result['head_sha']}`\n\n"
+    body += f"Skills: {', '.join(safe(skill) for skill in result['skills']) or 'none'}.\n\n</details>\n"
+    return body
+
+
+def generation_comment(sha, status, logs_url):
+    verification = "✅ Passed" if status == "success" else "❌ Failed"
+    body = f"## {BOT_NAME}\n\n### 🧪 Tests added\n\nCommit: `{sha}`\n\n"
+    body += f"**Verification: {verification}**\n\n"
+    body += (
+        "The new tests failed. They are committed for the PR author to investigate.\n\n"
+        if status == "failure"
+        else "The new tests passed verification.\n\n"
+    )
+    body += f"Only test files were changed.\n\n📋 [View verification logs]({logs_url})"
+    return body
+
+
 def publish_review(work):
     result = json.loads((work / "result.json").read_text())
     current_pr(result["number"], result["head_sha"])
-    review = {**result["review"], "head_sha": result["head_sha"]}
-    data = json.dumps(review).replace("<", "\\u003c")
-    body = f"{MARKER}\n<!-- review-data:{data} -->\n## Unit test agent · {review['score']}/5\n\n"
-    body += f"Commit: `{result['head_sha']}`\n\n{safe(review['summary'])}\n\n"
-    for gap in review["gaps"]:
-        body += f"- `{safe(gap['path'])}`: {safe(gap['scenario'])} — {safe(gap['reason'])}\n"
-    body += (
-        "\nA maintainer can comment **`generate tests`** to add these tests.\n"
-        if review["gaps"]
-        else "\n**5/5 — no missing tests.**\n"
-    )
-    body += f"\nSkills: {', '.join(safe(skill) for skill in result['skills']) or 'none'}. Task cost reported by Pi: **${result['cost_usd']:.5f}**.\n"
+    review = result["review"]
+    body = review_comment(result)
     comments = api(f"issues/{result['number']}/comments?per_page=100", paginate=True)
     previous = next(
         (
@@ -411,7 +436,7 @@ def publish_review(work):
             "status": "completed",
             "conclusion": "failure" if review["gaps"] else "success",
             "output": {
-                "title": f"Test sufficiency: {review['score']}/5",
+                "title": f"TestScout · {review['score']}/5 — {'Missing tests' if review['gaps'] else 'No missing tests'}",
                 "summary": body[:60000],
             },
         },
@@ -447,7 +472,7 @@ def commit(source, work):
             f"issues/{result['number']}/comments",
             "POST",
             {
-                "body": "Unit test agent: no test changes were produced; no commit created."
+                "body": f"## {BOT_NAME}\n\nℹ️ No test changes were produced. No commit created."
             },
         )
         return
@@ -497,10 +522,8 @@ def commit(source, work):
     )
     sha = command("git", "rev-parse", "HEAD", cwd=source).strip()
     status = os.environ["TEST_RESULT"]
-    body = f"Unit test agent added commit `{sha}`.\n\nVerification: **{status}**. "
-    body += "Failing tests are preserved for the PR author to investigate; application code was not changed.\n\n"
-    body += f"Generation cost reported by Pi: ${result['cost_usd']:.5f}. "
-    body += f"[Verification logs]({os.environ['GITHUB_SERVER_URL']}/{REPO}/actions/runs/{os.environ['GITHUB_RUN_ID']})."
+    logs_url = f"{os.environ['GITHUB_SERVER_URL']}/{REPO}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+    body = generation_comment(sha, status, logs_url)
     api(f"issues/{result['number']}/comments", "POST", {"body": body})
     api(
         "actions/workflows/ci.yml/dispatches",
