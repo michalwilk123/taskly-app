@@ -26,6 +26,8 @@ Human pushes cancel previous work for that PR. Every publication checks the head
 SHA again, and pushes are never forced. Unrelated/unauthorized comments cannot
 cancel a maintainer's generation. A repeated command starts from the current
 review; an obsolete review cannot authorize a commit against newer code.
+Closing the PR also cancels its work. A current 5/5 review makes `generate tests`
+a successful no-op, without calling the model or creating a commit.
 
 ## Agent, skills and rules
 
@@ -74,5 +76,19 @@ broader fork support. Keep any such work proportional to actual usage.
 
 Local checks: `python -m unittest discover -s scripts/tests`, backend pytest,
 frontend tests/typecheck/format, Ruff, and actionlint. Pi-to-OpenRouter connectivity
-was checked with the exact pinned container and model. Demonstration PR links and
-observed runs are recorded here after the end-to-end verification.
+was checked with the exact pinned container and model.
+
+- [Backend demo PR #1](https://github.com/michalwilk123/taskly-app/pull/1): a new
+  statistics endpoint with one parameterized test covering empty, mixed and
+  completed lists. The reviewer returned 5/5; `generate tests` finished green
+  without another model call or commit. Review cost reported by Pi: $0.00152.
+- [Frontend demo PR #2](https://github.com/michalwilk123/taskly-app/pull/2): an
+  overdue filter with no new tests. The reviewer returned 3/5 and identified
+  completed-task and date-boundary cases. Review cost reported by Pi: $0.00175.
+- [Cancellation run](https://github.com/michalwilk123/taskly-app/actions/runs/39845313671):
+  a human push during generation canceled the obsolete command run; CI started
+  for the new commit.
+
+The seven orchestration tests use case matrices for conditional rules, scores,
+test-only paths, Pi errors/costs, maintainer roles, stale/closed/fork PRs and actual
+Git diffs containing renames, deletions and no changes.

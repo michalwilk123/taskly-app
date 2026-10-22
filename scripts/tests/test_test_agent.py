@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -10,16 +11,54 @@ import test_agent as agent
 
 class TestAgent(unittest.TestCase):
     def test_only_maintainers_can_generate_and_sufficient_review_is_a_noop(self):
-        event = {"sender": {"login": "owner"}, "comment": {"body": "generate tests"}, "issue": {"number": 1}}
-        pr = {"state": "open", "head": {"sha": "current", "ref": "feature", "repo": {"full_name": agent.REPO}}, "base": {"sha": "base"}}
+        event = {
+            "sender": {"login": "owner"},
+            "comment": {"body": "generate tests"},
+            "issue": {"number": 1},
+        }
+        pr = {
+            "state": "open",
+            "head": {
+                "sha": "current",
+                "ref": "feature",
+                "repo": {"full_name": agent.REPO},
+            },
+            "base": {"sha": "base"},
+        }
         review = {"head_sha": "current", "score": 5, "gaps": []}
-        comments = [{"user": {"login": "github-actions[bot]"}, "body": agent.MARKER + "\n<!-- review-data:" + json.dumps(review) + " -->"}]
-        with patch.dict(agent.os.environ, {"GITHUB_EVENT_NAME": "issue_comment", "GITHUB_EVENT_PATH": "/event"}), patch.object(agent.Path, "read_text", return_value=json.dumps(event)), patch.object(agent, "output") as emit:
+        comments = [
+            {
+                "user": {"login": "github-actions[bot]"},
+                "body": agent.MARKER
+                + "\n<!-- review-data:"
+                + json.dumps(review)
+                + " -->",
+            }
+        ]
+        with (
+            patch.dict(
+                agent.os.environ,
+                {"GITHUB_EVENT_NAME": "issue_comment", "GITHUB_EVENT_PATH": "/event"},
+            ),
+            patch.object(agent.Path, "read_text", return_value=json.dumps(event)),
+            patch.object(agent, "output") as emit,
+        ):
             for role in ("read", "triage", "write"):
-                with self.subTest(role=role), patch.object(agent, "api", return_value={"role_name": role}), self.assertRaisesRegex(ValueError, "maintainers"):
+                with (
+                    self.subTest(role=role),
+                    patch.object(agent, "api", return_value={"role_name": role}),
+                    self.assertRaisesRegex(ValueError, "maintainers"),
+                ):
                     agent.prepare(Path("/unused"))
             for role in ("maintain", "admin"):
-                with self.subTest(role=role), patch.object(agent, "api", side_effect=[{"role_name": role}, pr, comments, {}]) as request:
+                with (
+                    self.subTest(role=role),
+                    patch.object(
+                        agent,
+                        "api",
+                        side_effect=[{"role_name": role}, pr, comments, {}],
+                    ) as request,
+                ):
                     agent.prepare(Path("/unused"))
                     emit.assert_called_with(mode="skip", number=1, head_sha="current")
                     self.assertIn("5/5", request.call_args.args[2]["body"])
@@ -30,7 +69,7 @@ class TestAgent(unittest.TestCase):
             {
                 "name": "endpoint",
                 "paths": ["backend/**"],
-                "added_lines": [r"@router\.get"],
+                "added_lines": [r"^@router\.get"],
                 "skills": ["pytest", "api"],
             },
             {
@@ -55,7 +94,7 @@ class TestAgent(unittest.TestCase):
             agent.select_skills(rules, changes),
             {"pytest": ["backend"], "module": ["module"]},
         )
-        changes[0]["added_lines"] = '@router.get("/new")'
+        changes[0]["added_lines"] = 'def helper(): pass\n@router.get("/new")'
         self.assertEqual(
             agent.select_skills(rules, changes),
             {
@@ -144,6 +183,62 @@ class TestAgent(unittest.TestCase):
                         },
                     }
                 )
+            )
+        for reason in ("aborted", "length"):
+            with (
+                self.subTest(reason=reason),
+                self.assertRaisesRegex(ValueError, reason),
+            ):
+                agent.parse_events(
+                    json.dumps(
+                        {
+                            "type": "message_end",
+                            "message": {"role": "assistant", "stopReason": reason},
+                        }
+                    )
+                )
+
+    def test_full_diff_preserves_renames_deletions_and_empty_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory)
+
+            def git(*args):
+                return agent.command(
+                    "git",
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.com",
+                    *args,
+                    cwd=source,
+                ).strip()
+
+            git("init", "-q")
+            (source / "old.py").write_text(
+                '@router.get("/existing")\n' + "# unchanged\n" * 20
+            )
+            (source / "deleted.py").write_text("removed = True\n")
+            git("add", ".")
+            git("commit", "-qm", "base")
+            base = git("rev-parse", "HEAD")
+            (source / "old.py").rename(source / "new.py")
+            (source / "deleted.py").unlink()
+            git("add", "-A")
+            git("commit", "-qm", "rename and delete")
+            head = git("rev-parse", "HEAD")
+            changes = {
+                c["path"]: c
+                for c in agent.diff_context(
+                    source, {"base_sha": base, "head_sha": head}
+                )
+            }
+            self.assertTrue(changes["new.py"]["status"].startswith("R"))
+            self.assertIn("rename from old.py", changes["new.py"]["patch"])
+            self.assertEqual(changes["new.py"]["added_lines"], "")
+            self.assertEqual(changes["deleted.py"]["status"], "D")
+            self.assertIn("-removed = True", changes["deleted.py"]["patch"])
+            self.assertEqual(
+                agent.diff_context(source, {"base_sha": head, "head_sha": head}), []
             )
 
     def test_pr_must_be_open_same_repository_and_at_reviewed_sha(self):
