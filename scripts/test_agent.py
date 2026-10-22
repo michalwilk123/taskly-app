@@ -482,7 +482,7 @@ def commit(source, work):
     body += f"Generation cost reported by Pi: ${result['cost_usd']:.5f}. "
     body += f"[Verification logs]({os.environ['GITHUB_SERVER_URL']}/{REPO}/actions/runs/{os.environ['GITHUB_RUN_ID']})."
     api(f"issues/{result['number']}/comments", "POST", {"body": body})
-    api("actions/workflows/ci.yml/dispatches", "POST", {"ref": pr["head"]["ref"], "inputs": {"pr_number": str(result["number"])}})
+    api("actions/workflows/ci.yml/dispatches", "POST", {"ref": pr["base"]["ref"], "inputs": {"pr_number": str(result["number"]), "sha": sha}})
 
 
 def main():

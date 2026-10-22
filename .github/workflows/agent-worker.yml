@@ -21,7 +21,7 @@ permissions:
 
 concurrency:
   group: pi-test-agent-${{ inputs.pr_number }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ inputs.mode != 'generate' }}
 
 jobs:
   agent:
