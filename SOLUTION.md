@@ -82,23 +82,27 @@ Local checks: `python -m unittest discover -s scripts/tests`, backend pytest,
 frontend tests/typecheck/format, Ruff, and actionlint. Pi-to-OpenRouter connectivity
 was checked with the exact pinned container and model.
 
-- [Backend demo PR #1](https://github.com/michalwilk123/taskly-app/pull/1): a new
+- [Backend demo PR #3](https://github.com/michalwilk123/taskly-app/pull/3): a new
   statistics endpoint with one parameterized test covering empty, mixed and
   completed lists. The reviewer returned 5/5; `generate tests` finished green
   without another model call or commit.
-- [Frontend demo PR #2](https://github.com/michalwilk123/taskly-app/pull/2): an
+- [Frontend demo PR #4](https://github.com/michalwilk123/taskly-app/pull/4): an
   overdue filter with no new tests. The reviewer returned 3/5 and identified
   completed-task and date-boundary cases.
-  [Generation and verification](https://github.com/michalwilk123/taskly-app/actions/runs/39845774068)
-  added [bot commit d2322ee](https://github.com/michalwilk123/taskly-app/commit/d2322ee3080102f1e607c7133a1cbd60946a404a)
+  [Generation and verification](https://github.com/michalwilk123/taskly-app/actions/runs/39857619628)
+  added [bot commit 013221b](https://github.com/michalwilk123/taskly-app/commit/013221bd871cb3b6d2504d99fdd4c4a13bd7683a)
   changing only two test files: one new selector test and an extension of the
   existing filter component test. Vitest reported 18 passing tests and one
-  assertion failure: completed tasks incorrectly appear in the overdue filter.
+  assertion failure: completed tasks and tasks due today locally incorrectly
+  appear in the overdue filter when UTC has already advanced to the next day.
   The failed test was committed, with no production-code edits.
-  [Explicitly dispatched CI](https://github.com/michalwilk123/taskly-app/actions/runs/39846728475)
+  [Explicitly dispatched CI](https://github.com/michalwilk123/taskly-app/actions/runs/39857945726)
   ran against that bot commit and reproduced the failure.
-- [Cancellation run](https://github.com/michalwilk123/taskly-app/actions/runs/39845313671):
-  a human push during generation canceled the obsolete command run; CI started
+  In a temporary copy, routing overdue selection through the existing `isOverdue`
+  helper made all four tests in the two generated/updated test files pass. This
+  validates the test expectation without changing the demonstration PR's code.
+- [Cancellation run](https://github.com/michalwilk123/taskly-app/actions/runs/39857159719):
+  a human push during review canceled the obsolete CI run; CI started
   for the new commit.
 
 The seven orchestration tests use case matrices for conditional rules, scores,
