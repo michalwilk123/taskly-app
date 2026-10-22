@@ -49,7 +49,8 @@ jobs:
               for status in ('in_progress', 'queued', 'waiting', 'pending'):
                   runs = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/actions/runs?status={status}&per_page=100']))['workflow_runs']
                   for run in runs:
-                      old_ci = run['path'] == '.github/workflows/ci.yml' and run['head_repository']['full_name'] == repo and run['head_branch'] == pr['head']['ref'] and (event['action'] == 'closed' or run['head_sha'] != pr['head']['sha'])
+                      same_pr = run['head_branch'] == pr['head']['ref'] or run['display_title'] == f'CI · PR #{number}'
+                      old_ci = run['path'] == '.github/workflows/ci.yml' and run['head_repository']['full_name'] == repo and same_pr and (event['action'] == 'closed' or run['head_sha'] != pr['head']['sha'])
                       old_command = run['path'] == '.github/workflows/test-agent.yml' and run['event'] == 'issue_comment' and run['display_title'] == f'Test agent · PR #{number}'
                       if old_ci or old_command:
                           subprocess.run(['gh', 'api', '--method', 'POST', f"repos/{repo}/actions/runs/{run['id']}/cancel"], check=False)
