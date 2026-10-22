@@ -19,6 +19,13 @@ def create_todo(payload: TodoCreate, repo: Repository):
     return repo.create(payload)
 
 
+@router.get("/stats")
+def get_todo_stats(repo: Repository) -> dict[str, int]:
+    todos = repo.list()
+    completed = sum(todo.completed for todo in todos)
+    return {"total": len(todos), "completed": completed, "active": len(todos) - completed}
+
+
 @router.get("/{todo_id}", response_model=Todo)
 def get_todo(todo_id: TodoId, repo: Repository):
     todo = repo.get(todo_id)
