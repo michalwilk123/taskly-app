@@ -29,6 +29,9 @@ Human pushes cancel previous work for that PR. Every publication checks the head
 SHA again, and pushes are never forced. Unrelated/unauthorized comments cannot
 cancel a maintainer's generation. A repeated command starts from the current
 review; an obsolete review cannot authorize a commit against newer code.
+Human pushes and bot commits mark the previous review as outdated and remove its
+generation action, including when failing tests prevent another review. The
+generation report lists changed test files and the model's scenario summary.
 Closing the PR also cancels its work. A current 5/5 review makes `generate tests`
 a successful no-op, without calling the model or creating a commit.
 
@@ -53,6 +56,9 @@ instructions require reading them. The report records selected rules/skills.
 Pi's cost estimates remain in execution logs and
 artifacts; PR comments contain no costs. Oversized diffs fail instead of receiving
 partial approval.
+Prompts are streamed through stdin, without duplicating added lines used for rule
+matching. Named containers are forcibly removed in `finally`, including on timeout
+or invalid output. Result artifacts use `skill_rules` to map skills to matched rules.
 
 ## Security and limitations
 
@@ -105,6 +111,9 @@ was checked with the exact pinned container and model.
   a human push during review canceled the obsolete CI run; CI started
   for the new commit.
 
-The seven orchestration tests use case matrices for conditional rules, scores,
+The ten orchestration tests use case matrices for conditional rules, scores,
 test-only paths, Pi errors/costs, maintainer roles, stale/closed/fork PRs and actual
-Git diffs containing renames, deletions and no changes.
+Git diffs containing renames, deletions and no changes. Regression cases also cover
+large stdin prompts, cleanup across exit modes, HTML-comment metadata round trips,
+stale review actions, and generation reports. Real Docker smoke checks verify stdin
+delivery and removal after successful execution and timeout, without model calls.

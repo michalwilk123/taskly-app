@@ -1,6 +1,8 @@
 import json
+import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -62,6 +64,197 @@ class TestAgent(unittest.TestCase):
                     agent.prepare(Path("/unused"))
                     emit.assert_called_with(mode="skip", number=1, head_sha="current")
                     self.assertIn("5/5", request.call_args.args[2]["body"])
+                    self.assertIn("current", request.call_args.args[2]["body"])
+            review["head_sha"] = "previous"
+            comments[0]["body"] = (
+                agent.MARKER + "\n<!-- review-data:" + json.dumps(review) + " -->"
+            )
+            with (
+                patch.object(
+                    agent, "api", side_effect=[{"role_name": "admin"}, pr, comments]
+                ),
+                self.assertRaisesRegex(ValueError, "current PR commit"),
+            ):
+                agent.prepare(Path("/unused"))
+
+    def test_large_pi_prompt_uses_stdin_and_container_is_cleaned_on_every_exit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            docker = root / "docker"
+            docker.write_text("""#!/usr/bin/env python3
+import json, os, sys, time
+with open(os.environ["TEST_DOCKER_RECORD"], "a") as log:
+    record = {"args": sys.argv[1:]}
+    if sys.argv[1] == "run":
+        record["prompt"] = json.load(sys.stdin)
+    log.write(json.dumps(record) + "\\n")
+if sys.argv[1] != "run":
+    sys.exit(0)
+case = os.environ["TEST_PI_CASE"]
+if case == "timeout":
+    time.sleep(5)
+if case == "exit_error":
+    sys.stderr.write("runtime failed")
+    sys.exit(1)
+if case == "malformed":
+    print("invalid JSON")
+else:
+    message = {"role": "assistant", "content": [{"type": "text", "text": json.dumps({"score": 5, "summary": "No gaps", "gaps": []})}]}
+    if case == "model_error":
+        message.update(stopReason="error", errorMessage="provider failed")
+    print(json.dumps({"type": "message_end", "message": message}))
+""")
+            docker.chmod(0o755)
+            head = agent.command("git", "rev-parse", "HEAD", cwd=agent.ROOT).strip()
+            change = {
+                "path": "frontend/src/example.ts",
+                "status": "M",
+                "patch": "+" + "ą" * 60000,
+                "added_lines": "ą" * 60000,
+            }
+            for case, error in (
+                ("success", None),
+                ("timeout", subprocess.TimeoutExpired),
+                ("exit_error", RuntimeError),
+                ("malformed", ValueError),
+                ("model_error", ValueError),
+            ):
+                with self.subTest(case=case):
+                    work = root / case
+                    work.mkdir()
+                    (work / "state.json").write_text(
+                        json.dumps(
+                            {
+                                "mode": "review",
+                                "head_sha": head,
+                                "pull_request": {"title": "Review", "body": ""},
+                            }
+                        )
+                    )
+                    record = work / "docker.jsonl"
+                    with (
+                        patch.dict(
+                            os.environ,
+                            {
+                                "PATH": str(root) + os.pathsep + os.environ["PATH"],
+                                "TEST_DOCKER_RECORD": str(record),
+                                "TEST_PI_CASE": case,
+                            },
+                        ),
+                        patch.dict(
+                            agent.CONFIG,
+                            {"timeout_seconds": 0.2 if case == "timeout" else 5},
+                        ),
+                        patch.object(agent, "diff_context", return_value=[change]),
+                    ):
+                        if error:
+                            with self.assertRaises(error):
+                                agent.run_pi(agent.ROOT, work)
+                        else:
+                            agent.run_pi(agent.ROOT, work)
+                            result = json.loads((work / "result.json").read_text())
+                            self.assertEqual(
+                                result["skill_rules"],
+                                {
+                                    ".agents/skills/frontend-tests/SKILL.md": [
+                                        "frontend"
+                                    ]
+                                },
+                            )
+                    calls = [
+                        json.loads(line) for line in record.read_text().splitlines()
+                    ]
+                    self.assertEqual(len(calls), 2)
+                    args = calls[0]["args"]
+                    self.assertIn("--interactive", args)
+                    self.assertNotIn("added_lines", calls[0]["prompt"]["diff"][0])
+                    self.assertEqual(
+                        calls[0]["prompt"]["diff"][0]["patch"], change["patch"]
+                    )
+                    self.assertGreater(len(json.dumps(calls[0]["prompt"])), 131072)
+                    self.assertEqual(
+                        calls[1]["args"],
+                        ["rm", "--force", args[args.index("--name") + 1]],
+                    )
+
+    def test_review_metadata_round_trips_and_old_review_loses_generation_action(self):
+        review = {
+            "score": 3,
+            "summary": "Handle <!-- --> and --> correctly",
+            "gaps": [
+                {
+                    "path": "app.py",
+                    "scenario": "Empty input",
+                    "reason": "Missing boundary",
+                }
+            ],
+        }
+        body = agent.review_comment(
+            {
+                "review": review,
+                "head_sha": "previous",
+                "skill_rules": {".agents/skills/backend-tests/SKILL.md": ["backend"]},
+            }
+        )
+        stored = json.loads(agent.re.search(r"<!-- review-data:(.*?) -->", body)[1])
+        self.assertEqual(stored, {**review, "head_sha": "previous"})
+        comment = {"id": 7, "user": {"login": "github-actions[bot]"}, "body": body}
+        pr = {"head": {"sha": "current"}}
+        with (
+            patch.object(agent, "current_pr", return_value=pr),
+            patch.object(agent, "api", side_effect=[[comment], comment, {}]) as request,
+        ):
+            agent.mark_review_stale(1)
+            outdated = request.call_args.args[2]["body"]
+        self.assertIn("Outdated review", outdated)
+        self.assertNotIn("generate tests", outdated)
+        self.assertEqual(
+            json.loads(agent.re.search(r"<!-- review-data:(.*?) -->", outdated)[1]),
+            stored,
+        )
+        for current, text in (("previous", body), ("current", outdated)):
+            with (
+                self.subTest(current=current),
+                patch.object(
+                    agent, "current_pr", return_value={"head": {"sha": current}}
+                ),
+                patch.object(
+                    agent, "api", return_value=[{**comment, "body": text}]
+                ) as request,
+            ):
+                agent.mark_review_stale(1)
+                self.assertEqual(request.call_count, 1)
+        with (
+            patch.object(agent, "current_pr", return_value=pr),
+            patch.object(
+                agent,
+                "api",
+                side_effect=[[comment], {**comment, "body": "A newer review"}],
+            ) as request,
+        ):
+            agent.mark_review_stale(1)
+            self.assertEqual(request.call_count, 2)
+
+    def test_generation_report_includes_files_and_scenarios_and_rejects_unknown_status(
+        self,
+    ):
+        result = {
+            "files": [{"path": "backend/tests/test_example.py", "content": "test"}],
+            "generation_summary": "Covers empty input.\nPreserves unrelated records.",
+        }
+        for status, label in (("success", "✅ Passed"), ("failure", "❌ Failed")):
+            with self.subTest(status=status):
+                body = agent.generation_comment(
+                    result, "abc", status, "https://example.com/logs"
+                )
+                self.assertIn(label, body)
+                self.assertIn(result["files"][0]["path"], body)
+                self.assertIn("Preserves unrelated records.", body)
+        for status in ("cancelled", "", None):
+            with self.subTest(status=status), self.assertRaises(ValueError):
+                agent.generation_comment(
+                    result, "abc", status, "https://example.com/logs"
+                )
 
     def test_rules_match_conditions_on_the_same_file_and_deduplicate_skills(self):
         rules = [
