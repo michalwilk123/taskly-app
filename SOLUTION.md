@@ -12,10 +12,9 @@ GitHub-hosted Ubuntu runners supply Docker. No Copilot subscription is needed.
 
 1. Open a same-repository PR. `CI` runs pytest, Vitest, TypeScript, Prettier, Ruff
    and the orchestration tests, then calls the Pi reviewer.
-2. TestScout updates one PR comment with a star rating, status and missing tests,
-   and creates an **AI test review** check on the
-   reviewed SHA. **5/5 means no missing tests** and a green check; 1–4 means
-   concrete gaps and a red check.
+2. TestScout updates one PR comment with a one-sentence summary and details,
+   and creates an **AI test review** check on the reviewed SHA. An empty gaps
+   list gives a green check; material missing scenarios give a red check.
 3. A maintainer comments exactly `generate tests`. Only current `maintain` and
    `admin` repository roles may run this command; ordinary `write` is excluded.
 4. Pi writes test files. Another job runs the checks without model credentials.
@@ -35,7 +34,7 @@ generation report lists changed test files and the model's scenario summary.
 That summary is labeled as preceding verification, so the agent's statement that
 it did not run tests is distinct from the verification job's result. Bot pushes
 invalidate the old assessment using the pushed SHA, avoiding PR API update lag.
-Closing the PR also cancels its work. A current 5/5 review makes `generate tests`
+Closing the PR also cancels its work. A current review with no gaps makes `generate tests`
 a successful no-op, without calling the model or creating a commit.
 
 ## Agent, skills and rules
@@ -93,10 +92,10 @@ was checked with the exact pinned container and model.
 
 - [Backend demo PR #3](https://github.com/michalwilk123/taskly-app/pull/3): a new
   statistics endpoint with one parameterized test covering empty, mixed and
-  completed lists. The reviewer returned 5/5; `generate tests` finished green
+  completed lists. The reviewer found no gaps; `generate tests` finished green
   without another model call or commit.
 - [Frontend demo PR #4](https://github.com/michalwilk123/taskly-app/pull/4): an
-  overdue filter with no new tests. The reviewer returned 3/5 and identified
+  overdue filter with no new tests. The reviewer identified
   completed-task and date-boundary cases.
   [Generation and verification](https://github.com/michalwilk123/taskly-app/actions/runs/39857619628)
   added [bot commit 013221b](https://github.com/michalwilk123/taskly-app/commit/013221bd871cb3b6d2504d99fdd4c4a13bd7683a)
@@ -114,7 +113,7 @@ was checked with the exact pinned container and model.
   a human push during review canceled the obsolete CI run; CI started
   for the new commit.
 
-The ten orchestration tests use case matrices for conditional rules, scores,
+The ten orchestration tests use case matrices for conditional rules, review contracts,
 test-only paths, Pi errors/costs, maintainer roles, stale/closed/fork PRs and actual
 Git diffs containing renames, deletions and no changes. Regression cases also cover
 large stdin prompts, cleanup across exit modes, HTML-comment metadata round trips,

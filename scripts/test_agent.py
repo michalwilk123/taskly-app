@@ -93,6 +93,12 @@ def latest_review(number):
     )
 
 
+def review_metadata(review):
+    data = json.dumps({key: review[key] for key in ("summary", "gaps", "head_sha")})
+    data = data.replace("<", "\\u003c").replace(">", "\\u003e")
+    return f"{MARKER}\n<!-- review-data:{data} -->"
+
+
 def mark_review_stale(number, head_sha=None):
     head_sha = head_sha or current_pr(number)["head"]["sha"]
     comment = latest_review(number)
@@ -102,13 +108,14 @@ def mark_review_stale(number, head_sha=None):
     review = json.loads(re.search(r"<!-- review-data:(.*?) -->", body)[1])
     if review["head_sha"] == head_sha or "<!-- outdated-review -->" in body:
         return
-    metadata, previous = body.split("\n## ", 1)
+    _, previous = body.split("\n## ", 1)
     previous = re.sub(
         r"\n### 💬 Next step\n.*?(?=\n<details>|\Z)", "", previous, flags=re.S
     )
-    body = f"{metadata}\n<!-- outdated-review -->\n## {BOT_NAME}\n\n"
-    body += f"⏳ **Outdated review** — applies to `{review['head_sha'][:7]}`, not the current HEAD.\n\n"
-    body += "Wait for a review of the current commit before requesting more tests.\n\n"
+    body = (
+        f"{review_metadata(review)}\n<!-- outdated-review -->\n## {BOT_NAME} raport\n\n"
+    )
+    body += f"This assessment applies to `{review['head_sha'][:7]}`; the PR has newer commits.\n\n"
     body += f"<details>\n<summary>Previous assessment</summary>\n\n## {previous}\n</details>\n"
     if api(f"issues/comments/{comment['id']}")["body"] != comment["body"]:
         return  # A newer review replaced this comment while we were preparing the notice.
@@ -155,12 +162,12 @@ def prepare(work):
             raise ValueError(
                 "Wait for the review of the current PR commit before generating tests"
             )
-        if review["score"] == 5:
+        if not review["gaps"]:
             api(
                 f"issues/{number}/comments",
                 "POST",
                 {
-                    "body": f"## {BOT_NAME}\n\nℹ️ Nothing to generate — the review for `{state['head_sha'][:7]}` found no gaps (5/5). No commit needed."
+                    "body": f"## {BOT_NAME} raport\n\nNothing to generate — the review for `{state['head_sha'][:7]}` found no gaps."
                 },
             )
             output(mode="skip", number=number, head_sha=state["head_sha"])
@@ -225,11 +232,9 @@ def snapshot(root):
 
 
 def validate_review(result, changed_paths):
-    score, gaps = result.get("score"), result.get("gaps")
-    if type(score) is not int or not 1 <= score <= 5 or not isinstance(gaps, list):
-        raise ValueError("Invalid review score or gaps")
-    if (score == 5) != (len(gaps) == 0):
-        raise ValueError("Review score contradicts gaps")
+    gaps = result.get("gaps")
+    if not isinstance(gaps, list):
+        raise ValueError("Review requires a list of gaps")
     if not isinstance(result.get("summary"), str) or not result["summary"].strip():
         raise ValueError("Review requires a summary")
     for gap in gaps:
@@ -427,13 +432,8 @@ def safe(value):
 
 def review_comment(result):
     review = {**result["review"], "head_sha": result["head_sha"]}
-    data = json.dumps(review).replace("<", "\\u003c").replace(">", "\\u003e")
-    stars = "⭐" * review["score"] + "☆" * (5 - review["score"])
-    status = "⚠️ Missing tests" if review["gaps"] else "✅ No missing tests"
-    body = f"{MARKER}\n<!-- review-data:{data} -->\n## {BOT_NAME}\n\n"
-    body += (
-        f"**{stars} · {review['score']}/5 — {status}**\n\n{safe(review['summary'])}\n"
-    )
+    body = f"{review_metadata(review)}\n## {BOT_NAME} raport\n\n"
+    body += f"{safe(review['summary'])}\n"
     if review["gaps"]:
         body += "\n### 🧪 Tests to add\n"
     for gap in review["gaps"]:
@@ -450,12 +450,11 @@ def generation_comment(result, sha, status, logs_url):
     if status not in {"success", "failure"}:
         raise ValueError(f"Unsupported verification status: {status!r}")
     verification = "✅ Passed" if status == "success" else "❌ Failed"
-    body = f"## {BOT_NAME}\n\n### 🧪 Tests added\n\nCommit: `{sha}`\n\n"
-    body += f"**Verification: {verification}**\n\n"
+    body = f"## {BOT_NAME} raport\n\n"
     body += (
-        "The new tests failed. They are committed for the PR author to investigate.\n\n"
+        f"**{verification}** — Tests were added and exposed a failure requiring investigation.\n\n"
         if status == "failure"
-        else "The new tests passed verification.\n\n"
+        else f"**{verification}** — Tests were added and passed verification.\n\n"
     )
     body += "### 📂 Changed test files\n\n"
     body += "\n".join(f"- `{safe(item['path'])}`" for item in result["files"])
@@ -464,7 +463,7 @@ def generation_comment(result, sha, status, logs_url):
         f"> {safe(line)}" for line in result["generation_summary"].splitlines()
     )
     body += "\n\n"
-    body += f"Only test files were changed.\n\n📋 [View verification logs]({logs_url})"
+    body += f"Commit: `{sha}`. Only test files were changed.\n\n📋 [View verification logs]({logs_url})"
     return body
 
 
@@ -487,7 +486,7 @@ def publish_review(work):
             "status": "completed",
             "conclusion": "failure" if review["gaps"] else "success",
             "output": {
-                "title": f"TestScout · {review['score']}/5 — {'Missing tests' if review['gaps'] else 'No missing tests'}",
+                "title": f"TestScout — {'Missing tests' if review['gaps'] else 'No missing tests'}",
                 "summary": body[:60000],
             },
         },
@@ -526,7 +525,7 @@ def commit(source, work):
             f"issues/{result['number']}/comments",
             "POST",
             {
-                "body": f"## {BOT_NAME}\n\nℹ️ No test changes were produced. No commit created."
+                "body": f"## {BOT_NAME} raport\n\nNo test changes were produced; no commit was created."
             },
         )
         return

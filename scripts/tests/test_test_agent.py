@@ -27,7 +27,7 @@ class TestAgent(unittest.TestCase):
             },
             "base": {"sha": "base"},
         }
-        review = {"head_sha": "current", "score": 5, "gaps": []}
+        review = {"head_sha": "current", "gaps": []}
         comments = [
             {
                 "user": {"login": "github-actions[bot]"},
@@ -63,7 +63,9 @@ class TestAgent(unittest.TestCase):
                 ):
                     agent.prepare(Path("/unused"))
                     emit.assert_called_with(mode="skip", number=1, head_sha="current")
-                    self.assertIn("5/5", request.call_args.args[2]["body"])
+                    self.assertIn(
+                        "Nothing to generate", request.call_args.args[2]["body"]
+                    )
                     self.assertIn("current", request.call_args.args[2]["body"])
             review["head_sha"] = "previous"
             comments[0]["body"] = (
@@ -99,7 +101,7 @@ if case == "exit_error":
 if case == "malformed":
     print("invalid JSON")
 else:
-    message = {"role": "assistant", "content": [{"type": "text", "text": json.dumps({"score": 5, "summary": "No gaps", "gaps": []})}]}
+    message = {"role": "assistant", "content": [{"type": "text", "text": json.dumps({"summary": "No gaps", "gaps": []})}]}
     if case == "model_error":
         message.update(stopReason="error", errorMessage="provider failed")
     print(json.dumps({"type": "message_end", "message": message}))
@@ -190,7 +192,6 @@ else:
 
     def test_review_metadata_round_trips_and_old_review_loses_generation_action(self):
         review = {
-            "score": 3,
             "summary": "Handle <!-- --> and --> correctly",
             "gaps": [
                 {
@@ -220,7 +221,7 @@ else:
             agent.mark_review_stale(1, "current")
             read_pr.assert_not_called()
             outdated = request.call_args.args[2]["body"]
-        self.assertIn("Outdated review", outdated)
+        self.assertIn("the PR has newer commits", outdated)
         self.assertNotIn("generate tests", outdated)
         self.assertEqual(
             json.loads(agent.re.search(r"<!-- review-data:(.*?) -->", outdated)[1]),
@@ -311,28 +312,27 @@ else:
             },
         )
 
-    def test_review_requires_consistent_score_and_actionable_changed_code(self):
+    def test_review_requires_summary_and_actionable_changed_code(self):
         gap = {
             "path": "app.py",
             "scenario": "empty input",
             "reason": "boundary untested",
         }
-        for score, gaps in [(5, []), (4, [gap]), (1, [gap])]:
-            agent.validate_review(
-                {"score": score, "summary": "Assessment", "gaps": gaps}, {"app.py"}
-            )
-        for score, gaps in [
-            (5, [gap]),
-            (4, []),
-            (True, []),
-            (0, []),
-            (3, [{**gap, "path": "unchanged.py"}]),
-            (3, [{**gap, "scenario": ""}]),
+        for gaps in ([], [gap]):
+            agent.validate_review({"summary": "Assessment", "gaps": gaps}, {"app.py"})
+        for summary, gaps in [
+            ("", []),
+            (None, []),
+            ("Assessment", None),
+            ("Assessment", "missing tests"),
+            ("Assessment", [{**gap, "path": "unchanged.py"}]),
+            ("Assessment", [{**gap, "scenario": ""}]),
         ]:
-            with self.subTest(score=score, gaps=gaps), self.assertRaises(ValueError):
-                agent.validate_review(
-                    {"score": score, "summary": "Assessment", "gaps": gaps}, {"app.py"}
-                )
+            with (
+                self.subTest(summary=summary, gaps=gaps),
+                self.assertRaises(ValueError),
+            ):
+                agent.validate_review({"summary": summary, "gaps": gaps}, {"app.py"})
 
     def test_only_test_files_are_publishable(self):
         for path in [
@@ -373,10 +373,10 @@ else:
         records = [
             {"type": "message_update", "usage": {"cost": {"total": 99}}},
             event("Reading files", 0.01),
-            event('{"score":5}', 0.02),
+            event('{"summary":"No gaps","gaps":[]}', 0.02),
         ]
         answer, cost = agent.parse_events("\n".join(map(json.dumps, records)))
-        self.assertEqual(answer, '{"score":5}')
+        self.assertEqual(answer, '{"summary":"No gaps","gaps":[]}')
         self.assertAlmostEqual(cost, 0.03)
         with self.assertRaisesRegex(ValueError, "rate limit"):
             agent.parse_events(
