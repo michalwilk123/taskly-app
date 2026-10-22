@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { env } from 'node:process'
+import { describe, expect, it, vi } from 'vitest'
 import { selectTodos } from './todos'
 import type { Todo } from '../types'
 
@@ -22,6 +23,30 @@ describe('selectTodos', () => {
       { ...base, id: 3 },
     ]
     expect(selectTodos(todos, 'active', ' api ', 'newest')).toEqual([matching])
+  })
+
+  it('shows only unfinished tasks due before the current local calendar day', () => {
+    const previousTimeZone = env.TZ
+    env.TZ = 'America/Los_Angeles'
+    vi.useFakeTimers()
+
+    try {
+      // 22:30 on October 2 locally, but October 3 in UTC.
+      vi.setSystemTime(new Date('2026-10-03T05:30:00Z'))
+      const todos: Todo[] = [
+        { ...base, id: 1, due_date: '2026-10-01' },
+        { ...base, id: 2, due_date: '2026-10-02' },
+        { ...base, id: 3, due_date: '2026-10-03' },
+        { ...base, id: 4, due_date: null },
+        { ...base, id: 5, due_date: '2026-10-01', completed: true },
+      ]
+
+      expect(selectTodos(todos, 'overdue', '', 'newest')).toEqual([todos[0]])
+    } finally {
+      vi.useRealTimers()
+      if (previousTimeZone === undefined) delete env.TZ
+      else env.TZ = previousTimeZone
+    }
   })
 
   it('sorts by priority without changing the source array', () => {
