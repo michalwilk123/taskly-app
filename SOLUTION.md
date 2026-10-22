@@ -85,6 +85,14 @@ was checked with the exact pinned container and model.
 - [Frontend demo PR #2](https://github.com/michalwilk123/taskly-app/pull/2): an
   overdue filter with no new tests. The reviewer returned 3/5 and identified
   completed-task and date-boundary cases. Review cost reported by Pi: $0.00175.
+  [Generation and verification](https://github.com/michalwilk123/taskly-app/actions/runs/39845774068)
+  added [bot commit d2322ee](https://github.com/michalwilk123/taskly-app/commit/d2322ee3080102f1e607c7133a1cbd60946a404a)
+  changing only two test files: one new selector test and an extension of the
+  existing filter component test. Vitest reported 18 passing tests and one
+  assertion failure: completed tasks incorrectly appear in the overdue filter.
+  The failed test was committed, with no production-code edits. Generation cost
+  reported by Pi: $0.00326. [Explicitly dispatched CI](https://github.com/michalwilk123/taskly-app/actions/runs/39846273550)
+  ran against that bot commit and reproduced the failure.
 - [Cancellation run](https://github.com/michalwilk123/taskly-app/actions/runs/39845313671):
   a human push during generation canceled the obsolete command run; CI started
   for the new commit.
