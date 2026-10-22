@@ -93,14 +93,14 @@ def latest_review(number):
     )
 
 
-def mark_review_stale(number):
-    pr = current_pr(number)
+def mark_review_stale(number, head_sha=None):
+    head_sha = head_sha or current_pr(number)["head"]["sha"]
     comment = latest_review(number)
     if not comment:
         return
     body = comment["body"]
     review = json.loads(re.search(r"<!-- review-data:(.*?) -->", body)[1])
-    if review["head_sha"] == pr["head"]["sha"] or "<!-- outdated-review -->" in body:
+    if review["head_sha"] == head_sha or "<!-- outdated-review -->" in body:
         return
     metadata, previous = body.split("\n## ", 1)
     previous = re.sub(
@@ -578,7 +578,7 @@ def commit(source, work):
     logs_url = f"{os.environ['GITHUB_SERVER_URL']}/{REPO}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
     try:
         body = generation_comment(result, sha, status, logs_url)
-        mark_review_stale(result["number"])
+        mark_review_stale(result["number"], sha)
         api(f"issues/{result['number']}/comments", "POST", {"body": body})
     finally:
         # A reporting failure must not leave the pushed commit without CI.

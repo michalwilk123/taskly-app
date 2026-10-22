@@ -143,7 +143,18 @@ else:
                         ),
                         patch.dict(
                             agent.CONFIG,
-                            {"timeout_seconds": 0.2 if case == "timeout" else 5},
+                            {
+                                "timeout_seconds": 1 if case == "timeout" else 5,
+                                "rules": [
+                                    {
+                                        "name": "frontend",
+                                        "paths": ["frontend/**"],
+                                        "skills": [
+                                            ".agents/skills/frontend-tests/SKILL.md"
+                                        ],
+                                    }
+                                ],
+                            },
                         ),
                         patch.object(agent, "diff_context", return_value=[change]),
                     ):
@@ -201,10 +212,13 @@ else:
         comment = {"id": 7, "user": {"login": "github-actions[bot]"}, "body": body}
         pr = {"head": {"sha": "current"}}
         with (
-            patch.object(agent, "current_pr", return_value=pr),
+            patch.object(
+                agent, "current_pr", return_value={"head": {"sha": "previous"}}
+            ) as read_pr,
             patch.object(agent, "api", side_effect=[[comment], comment, {}]) as request,
         ):
-            agent.mark_review_stale(1)
+            agent.mark_review_stale(1, "current")
+            read_pr.assert_not_called()
             outdated = request.call_args.args[2]["body"]
         self.assertIn("Outdated review", outdated)
         self.assertNotIn("generate tests", outdated)
