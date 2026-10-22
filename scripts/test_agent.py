@@ -459,7 +459,7 @@ def generation_comment(result, sha, status, logs_url):
     )
     body += "### 📂 Changed test files\n\n"
     body += "\n".join(f"- `{safe(item['path'])}`" for item in result["files"])
-    body += "\n\n### 📝 Generated scenarios\n\n"
+    body += "\n\n### 📝 Agent summary before verification\n\n"
     body += "\n".join(
         f"> {safe(line)}" for line in result["generation_summary"].splitlines()
     )

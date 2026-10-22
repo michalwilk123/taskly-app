@@ -32,6 +32,9 @@ review; an obsolete review cannot authorize a commit against newer code.
 Human pushes and bot commits mark the previous review as outdated and remove its
 generation action, including when failing tests prevent another review. The
 generation report lists changed test files and the model's scenario summary.
+That summary is labeled as preceding verification, so the agent's statement that
+it did not run tests is distinct from the verification job's result. Bot pushes
+invalidate the old assessment using the pushed SHA, avoiding PR API update lag.
 Closing the PR also cancels its work. A current 5/5 review makes `generate tests`
 a successful no-op, without calling the model or creating a commit.
 
@@ -117,3 +120,8 @@ Git diffs containing renames, deletions and no changes. Regression cases also co
 large stdin prompts, cleanup across exit modes, HTML-comment metadata round trips,
 stale review actions, and generation reports. Real Docker smoke checks verify stdin
 delivery and removal after successful execution and timeout, without model calls.
+
+Reporting examples: PR #3 shows the SHA-specific “nothing to generate” response;
+PR #4 shows an outdated assessment despite failing CI. The temporary
+[runtime/reporting PR #5](https://github.com/michalwilk123/taskly-app/pull/5)
+exercises generation reports with changed files and the agent's summary.
