@@ -9,6 +9,21 @@ import test_agent as agent
 
 
 class TestAgent(unittest.TestCase):
+    def test_only_maintainers_can_generate_and_sufficient_review_is_a_noop(self):
+        event = {"sender": {"login": "owner"}, "comment": {"body": "generate tests"}, "issue": {"number": 1}}
+        pr = {"state": "open", "head": {"sha": "current", "ref": "feature", "repo": {"full_name": agent.REPO}}, "base": {"sha": "base"}}
+        review = {"head_sha": "current", "score": 5, "gaps": []}
+        comments = [{"user": {"login": "github-actions[bot]"}, "body": agent.MARKER + "\n<!-- review-data:" + json.dumps(review) + " -->"}]
+        with patch.dict(agent.os.environ, {"GITHUB_EVENT_NAME": "issue_comment", "GITHUB_EVENT_PATH": "/event"}), patch.object(agent.Path, "read_text", return_value=json.dumps(event)), patch.object(agent, "output") as emit:
+            for role in ("read", "triage", "write"):
+                with self.subTest(role=role), patch.object(agent, "api", return_value={"role_name": role}), self.assertRaisesRegex(ValueError, "maintainers"):
+                    agent.prepare(Path("/unused"))
+            for role in ("maintain", "admin"):
+                with self.subTest(role=role), patch.object(agent, "api", side_effect=[{"role_name": role}, pr, comments, {}]) as request:
+                    agent.prepare(Path("/unused"))
+                    emit.assert_called_with(mode="skip", number=1, head_sha="current")
+                    self.assertIn("5/5", request.call_args.args[2]["body"])
+
     def test_rules_match_conditions_on_the_same_file_and_deduplicate_skills(self):
         rules = [
             {"name": "backend", "paths": ["backend/**"], "skills": ["pytest"]},

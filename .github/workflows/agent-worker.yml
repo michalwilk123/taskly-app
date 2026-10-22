@@ -52,14 +52,17 @@ jobs:
           HEAD_SHA: ${{ inputs.sha }}
         run: python automation/scripts/test_agent.py prepare --work "$RUNNER_TEMP/taskly-agent"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: steps.prepare.outputs.mode != 'skip'
         with:
           ref: ${{ steps.prepare.outputs.head_sha }}
           path: source
           fetch-depth: 0
           persist-credentials: false
       - name: Build pinned Pi runtime
+        if: steps.prepare.outputs.mode != 'skip'
         run: docker build -t taskly-pi automation/.github/agent
       - name: Run Pi in isolated workspace
+        if: steps.prepare.outputs.mode != 'skip'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: python automation/scripts/test_agent.py run --source source --work "$RUNNER_TEMP/taskly-agent"
